@@ -124,3 +124,8 @@ GLenum* Framebuffer::get_draw_buffers() const
 {
 	return m_draw_buffers;
 }
+
+GLuint Framebuffer::get_depth_texture_id() const
+{
+	return m_depth_texture_id;
+}

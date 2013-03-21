@@ -80,6 +80,7 @@ Renderer::Renderer(int width, int height):
 	m_lighting_shader_program = loadProgram("shaders/lighting.vertex.glsl","shaders/lighting.fragment.glsl");
 	m_quad_shader = loadProgram("shaders/quad.vertex.glsl","shaders/quad.fragment.glsl");
 	m_geometry_buffer_shader_program = loadProgram("shaders/geometry_buffer.vertex.glsl","shaders/geometry_buffer.fragment.glsl");
+	m_light_accumulation_shader_program = loadProgram("shaders/light_accumulation.vertex.glsl","shaders/light_accumulation.fragment.glsl");
 	
 	//~ Locating uniforms
 	m_basic_shader_model_matrix_position = glGetUniformLocation(m_basic_shader_program,"model_matrix");
@@ -96,6 +97,7 @@ Renderer::Renderer(int width, int height):
 
 	m_quad_shader_texture_1 = glGetUniformLocation(m_quad_shader, "renderedTexture1");
 	m_quad_shader_texture_2 = glGetUniformLocation(m_quad_shader, "renderedTexture2");
+	glBindFragDataLocation(m_quad_shader, 0, "color");
 
 	m_geometry_buffer_shader_model_matrix_location = glGetUniformLocation(m_geometry_buffer_shader_program,"model_matrix");
 	m_geometry_buffer_shader_view_matrix_location = glGetUniformLocation(m_geometry_buffer_shader_program,"view_matrix");
@@ -105,6 +107,18 @@ Renderer::Renderer(int width, int height):
 	glBindFragDataLocation(m_geometry_buffer_shader_program, 0, "out_color");
 	glBindFragDataLocation(m_geometry_buffer_shader_program, 1, "out_normal");
 	glBindFragDataLocation(m_geometry_buffer_shader_program, 2, "out_position");
+
+	m_light_accumulation_camera_position_location = glGetUniformLocation(m_light_accumulation_shader_program,"camera_position");
+	m_light_accumulation_light_position_location = glGetUniformLocation(m_light_accumulation_shader_program,"light_position");
+	m_light_accumulation_light_color_location = glGetUniformLocation(m_light_accumulation_shader_program,"light_color");
+	m_light_accumulation_light_intensity_location = glGetUniformLocation(m_light_accumulation_shader_program,"light_intensity");
+	m_light_accumulation_material_location = glGetUniformLocation(m_light_accumulation_shader_program,"material_texture");
+	m_light_accumulation_normal_location = glGetUniformLocation(m_light_accumulation_shader_program,"normal_texture");
+	m_light_accumulation_depth_location = glGetUniformLocation(m_light_accumulation_shader_program,"depth_texture");
+	m_light_accumulation_view_matrix_location = glGetUniformLocation(m_light_accumulation_shader_program,"view_matrix");
+	m_light_accumulation_projection_matrix_location = glGetUniformLocation(m_light_accumulation_shader_program,"projection_matrix");
+	//~ Adding some parameters
+	glBindFragDataLocation(m_light_accumulation_shader_program, 0, "out_frag_color");
 
 	m_lightIntensity = 15.5f;
 	m_radiusLight = 4.8f;
@@ -144,6 +158,7 @@ void Renderer::render()
 {
 	glClearColor(0.0,0.0,0.0,1.0);
 	glEnable(GL_DEPTH_TEST);
+	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 	//~ ------------------------------------------------------------------------------------------------------------
 	//~ Rendering the GUI
 	//~ ------------------------------------------------------------------------------------------------------------
@@ -155,6 +170,14 @@ void Renderer::render()
 	{
 		if(m_object != NULL)
 		{
+			std::vector<glm::vec3> light_position;
+			light_position.push_back(glm::vec3(-m_radiusLight,-m_radiusLight,-m_radiusLight));
+			light_position.push_back(glm::vec3(m_radiusLight,-m_radiusLight,-m_radiusLight));
+			light_position.push_back(glm::vec3(-m_radiusLight,m_radiusLight,-m_radiusLight));
+			light_position.push_back(glm::vec3(m_radiusLight,m_radiusLight,-m_radiusLight));
+			
+			glm::vec3 light_color = glm::vec3(1.0f,1.0f,1.0f);
+			float light_intensity = 10.5f;
 			//~ ------------------------------------------------------------------------------------------------------------
 			//~ Rendering the first geometry buffer
 			//~ ------------------------------------------------------------------------------------------------------------
@@ -183,72 +206,118 @@ void Renderer::render()
 			//~ Rendering the first camera
 			//~ ------------------------------------------------------------------------------------------------------------
 			glBindFramebuffer(GL_FRAMEBUFFER, m_left_camera_framebuffer->get_framebuffer_id());
-			glClearColor(0.0,0.0,0.0,1.0);
+			glDrawBuffers(m_left_camera_framebuffer->get_number_of_color_textures(), m_left_camera_framebuffer->get_draw_buffers());
 			glViewport(0, 0, m_width, m_height);
 			glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 			//~ Choosing shader
-			glUseProgram(m_lighting_shader_program);
+			glUseProgram(m_light_accumulation_shader_program);
+			
+			glUniform3fv(m_light_accumulation_camera_position_location, GL_FALSE, glm::value_ptr(m_rig->get_camera_one()->get_position()));
+			glUniformMatrix4fv(m_light_accumulation_view_matrix_location, 1, GL_FALSE, glm::value_ptr(m_rig->get_camera_one()->get_view_matrix()));
+			glUniformMatrix4fv(m_light_accumulation_projection_matrix_location, 1, GL_FALSE, glm::value_ptr(m_rig->get_camera_one()->get_projection_matrix()));
+			
+			glDisable(GL_DEPTH_TEST);
+			glEnable(GL_BLEND);
+			glBlendFunc(GL_ONE,GL_ONE);
+			
 			glActiveTexture(GL_TEXTURE0);
-			glBindTexture(GL_TEXTURE_2D, m_object->get_diffuse_texture());
-			glUniform1i(m_lighting_shader_diffuse_texture, 0);
-			glUniformMatrix4fv(m_lighting_shader_model_matrix_position, 1, GL_FALSE, glm::value_ptr(m_object->get_model_matrix()));
-			glUniformMatrix4fv(m_lighting_shader_view_matrix_position, 1, GL_FALSE, glm::value_ptr(m_rig->get_camera_one()->get_view_matrix()));
-			glUniformMatrix4fv(m_lighting_shader_projection_matrix_position, 1, GL_FALSE, glm::value_ptr(m_rig->get_camera_one()->get_projection_matrix()));
-			glUniform3fv(m_lighting_shader_camera_position, GL_FALSE, glm::value_ptr(m_rig->get_camera_one()->get_position()));
-			glUniform1f(m_lighting_shader_light_intensity, m_lightIntensity);
-			glUniform1f(m_lighting_shader_light_radius, m_radiusLight);
-			//~ Binding vao
-			glBindVertexArray(m_object->get_vao());
-			//~ Drawing
-			glDrawArrays(GL_TRIANGLES, 0, m_object->get_size());
+			glBindTexture(GL_TEXTURE_2D,m_geometry_buffer_framebuffer->get_texture_color_id()[0]);
+			glUniform1i(m_light_accumulation_material_location,0);
+			
+			glActiveTexture(GL_TEXTURE1);
+			glBindTexture(GL_TEXTURE_2D,m_geometry_buffer_framebuffer->get_texture_color_id()[1]);
+			glUniform1i(m_light_accumulation_normal_location,1);
+			
+			glActiveTexture(GL_TEXTURE2);
+			glBindTexture(GL_TEXTURE_2D,m_geometry_buffer_framebuffer->get_depth_texture_id());
+			glUniform1i(m_light_accumulation_depth_location,2);
+			
+			for(unsigned int i = 0; i < light_position.size(); ++i)
+			{
+				//~ Sending uniforms
+				glUniform3fv(m_light_accumulation_light_position_location, 1, glm::value_ptr(light_position.at(i)));
+				glUniform3fv(m_light_accumulation_light_color_location, 1, glm::value_ptr(light_color));
+				glUniform1f(m_light_accumulation_light_intensity_location, light_intensity);
+				//~ Binding vao
+				glBindVertexArray(m_quad_left->get_vao());
+				//~ Drawing
+				glDrawArrays(GL_TRIANGLES, 0, m_quad_left->get_size());
+			}
+			
+			glDisable(GL_BLEND);
+			glEnable(GL_DEPTH_TEST);
 			//~ Unbind
 			glBindVertexArray(0);
 			glBindFramebuffer(GL_FRAMEBUFFER, 0);
 			//~ ------------------------------------------------------------------------------------------------------------
 			//~ Rendering the second geometry buffer
 			//~ ------------------------------------------------------------------------------------------------------------
-			//~ Initializing the parameters
+			//~ //Initializing the parameters
 			glBindFramebuffer(GL_FRAMEBUFFER, m_geometry_buffer_framebuffer->get_framebuffer_id());
 			glDrawBuffers(m_geometry_buffer_framebuffer->get_number_of_color_textures(), m_geometry_buffer_framebuffer->get_draw_buffers());
 			glViewport(0, 0, m_width, m_height);
 			glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-			//~ Choosing the geometry buffer
+			//~ //Choosing the geometry buffer
 			glUseProgram(m_geometry_buffer_shader_program);
-			//~ Sending uniforms
+			//~ //Sending uniforms
 			glActiveTexture(GL_TEXTURE0);
 			glBindTexture(GL_TEXTURE_2D, m_object->get_diffuse_texture());
 			glUniform1i(m_geometry_buffer_shader_diffuse_location, 0);
 			glUniformMatrix4fv(m_geometry_buffer_shader_model_matrix_location, 1, GL_FALSE, glm::value_ptr(m_object->get_model_matrix()));
 			glUniformMatrix4fv(m_geometry_buffer_shader_view_matrix_location, 1, GL_FALSE, glm::value_ptr(m_rig->get_camera_two()->get_view_matrix()));
 			glUniformMatrix4fv(m_geometry_buffer_shader_projection_matrix_location, 1, GL_FALSE, glm::value_ptr(m_rig->get_camera_two()->get_projection_matrix()));
-			//~ Binding VAO
+			//~ //Binding VAO
 			glBindVertexArray(m_object->get_vao());
-			//~ Drawing
+			//~ //Drawing
 			glDrawArrays(GL_TRIANGLES, 0, m_object->get_size());
-			//~ Unbind
+			//~ //Unbind
 			glBindVertexArray(0);
 			glBindFramebuffer(GL_FRAMEBUFFER, 0);
 			//~ ------------------------------------------------------------------------------------------------------------
 			//~ Rendering the second camera
 			//~ ------------------------------------------------------------------------------------------------------------
 			glBindFramebuffer(GL_FRAMEBUFFER, m_right_camera_framebuffer->get_framebuffer_id());
-			glClearColor(0.0,0.0,0.0,1.0);
+			glDrawBuffers(m_right_camera_framebuffer->get_number_of_color_textures(), m_right_camera_framebuffer->get_draw_buffers());
 			glViewport(0, 0, m_width, m_height);
 			glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-			//~ Choosing shader
-			glUseProgram(m_lighting_shader_program);
+			//~ //Choosing shader
+			glUseProgram(m_light_accumulation_shader_program);
+			
+			glUniform3fv(m_light_accumulation_camera_position_location, GL_FALSE, glm::value_ptr(m_rig->get_camera_two()->get_position()));
+			glUniformMatrix4fv(m_light_accumulation_view_matrix_location, 1, GL_FALSE, glm::value_ptr(m_rig->get_camera_two()->get_view_matrix()));
+			glUniformMatrix4fv(m_light_accumulation_projection_matrix_location, 1, GL_FALSE, glm::value_ptr(m_rig->get_camera_two()->get_projection_matrix()));
+			
 			glActiveTexture(GL_TEXTURE0);
-			glBindTexture(GL_TEXTURE_2D, m_object->get_diffuse_texture());
-			glUniform1i(m_lighting_shader_diffuse_texture, 0);
-			glUniformMatrix4fv(m_lighting_shader_model_matrix_position, 1, GL_FALSE, glm::value_ptr(m_object->get_model_matrix()));
-			glUniformMatrix4fv(m_lighting_shader_view_matrix_position, 1, GL_FALSE, glm::value_ptr(m_rig->get_camera_two()->get_view_matrix()));
-			glUniformMatrix4fv(m_lighting_shader_projection_matrix_position, 1, GL_FALSE, glm::value_ptr(m_rig->get_camera_two()->get_projection_matrix()));
-			glUniform3fv(m_lighting_shader_camera_position, GL_FALSE, glm::value_ptr(m_rig->get_camera_two()->get_position()));
-			//~ Binding vao
-			glBindVertexArray(m_object->get_vao());
-			//~ Drawing
-			glDrawArrays(GL_TRIANGLES, 0, m_object->get_size());
-			//~ Unbind
+			glBindTexture(GL_TEXTURE_2D,m_geometry_buffer_framebuffer->get_texture_color_id()[0]);
+			glUniform1i(m_light_accumulation_material_location,0);
+			
+			glActiveTexture(GL_TEXTURE1);
+			glBindTexture(GL_TEXTURE_2D,m_geometry_buffer_framebuffer->get_texture_color_id()[1]);
+			glUniform1i(m_light_accumulation_normal_location,1);
+			
+			glActiveTexture(GL_TEXTURE2);
+			glBindTexture(GL_TEXTURE_2D,m_geometry_buffer_framebuffer->get_depth_texture_id());
+			glUniform1i(m_light_accumulation_depth_location,2);
+			
+			glDisable(GL_DEPTH_TEST);
+			glEnable(GL_BLEND);
+			glBlendFunc(GL_ONE,GL_ONE);
+			
+			for(unsigned int i = 0; i < light_position.size(); ++i)
+			{
+				//~ //Sending uniforms
+				glUniform3fv(m_light_accumulation_light_position_location, 1, glm::value_ptr(light_position.at(i)));
+				glUniform3fv(m_light_accumulation_light_color_location, 1, glm::value_ptr(light_color));
+				glUniform1f(m_light_accumulation_light_intensity_location, light_intensity);
+				//~ //Binding vao
+				glBindVertexArray(m_quad_left->get_vao());
+				//~ //Drawing
+				glDrawArrays(GL_TRIANGLES, 0, m_quad_left->get_size());
+			}
+			
+			glDisable(GL_BLEND);
+			glEnable(GL_DEPTH_TEST);
+			//~ //Unbind
 			glBindVertexArray(0);
 			glBindFramebuffer(GL_FRAMEBUFFER, 0);
 			//~ ------------------------------------------------------------------------------------------------------------
@@ -269,14 +338,6 @@ void Renderer::render()
 				glActiveTexture(GL_TEXTURE1);
 				glBindTexture(GL_TEXTURE_2D, m_right_camera_framebuffer->get_texture_color_id()[0]);
 				glUniform1i(m_quad_shader_texture_2, 1);
-				glUniformMatrix4fv(m_lighting_shader_model_matrix_position, 1, GL_FALSE, glm::value_ptr(m_quad_left->get_model_matrix()));
-				glUniformMatrix4fv(m_lighting_shader_view_matrix_position, 1, GL_FALSE, glm::value_ptr(m_rig->get_camera_two()->get_view_matrix()));
-				glUniformMatrix4fv(m_lighting_shader_projection_matrix_position, 1, GL_FALSE, glm::value_ptr(glm::perspective(
-						m_rig->get_camera_two()->get_fov(),
-						m_rig->get_camera_two()->get_ratio(),
-						m_rig->get_camera_two()->get_near(),
-						m_rig->get_camera_two()->get_far())));
-				glUniform3fv(m_lighting_shader_camera_position, GL_FALSE, glm::value_ptr(m_rig->get_position()));
 				//~ //Binding vao
 				glBindVertexArray(m_quad_left->get_vao());
 				//~ //Drawing
@@ -284,6 +345,7 @@ void Renderer::render()
 				//~ //Unbind
 				glBindVertexArray(0);
 			}
+			
 			//~ //Side by side
 			else if(m_view_mode == 1)
 			{
@@ -300,14 +362,6 @@ void Renderer::render()
 				glActiveTexture(GL_TEXTURE1);
 				glBindTexture(GL_TEXTURE_2D, m_left_camera_framebuffer->get_texture_color_id()[0]);
 				glUniform1i(m_quad_shader_texture_2, 1);
-				glUniformMatrix4fv(m_lighting_shader_model_matrix_position, 1, GL_FALSE, glm::value_ptr(m_quad_left->get_model_matrix()));
-				glUniformMatrix4fv(m_lighting_shader_view_matrix_position, 1, GL_FALSE, glm::value_ptr(m_rig->get_camera_two()->get_view_matrix()));
-				glUniformMatrix4fv(m_lighting_shader_projection_matrix_position, 1, GL_FALSE, glm::value_ptr(glm::perspective(
-						m_rig->get_camera_two()->get_fov(),
-						m_rig->get_camera_two()->get_ratio(),
-						m_rig->get_camera_two()->get_near(),
-						m_rig->get_camera_two()->get_far())));
-				glUniform3fv(m_lighting_shader_camera_position, GL_FALSE, glm::value_ptr(m_rig->get_position()));
 				//~ //Binding vao
 				glBindVertexArray(m_quad_left->get_vao());
 				//~ //Drawing
@@ -327,14 +381,6 @@ void Renderer::render()
 				glActiveTexture(GL_TEXTURE1);
 				glBindTexture(GL_TEXTURE_2D, m_right_camera_framebuffer->get_texture_color_id()[0]);
 				glUniform1i(m_quad_shader_texture_2, 1);
-				glUniformMatrix4fv(m_lighting_shader_model_matrix_position, 1, GL_FALSE, glm::value_ptr(m_quad_right->get_model_matrix()));
-				glUniformMatrix4fv(m_lighting_shader_view_matrix_position, 1, GL_FALSE, glm::value_ptr(m_rig->get_camera_two()->get_view_matrix()));
-				glUniformMatrix4fv(m_lighting_shader_projection_matrix_position, 1, GL_FALSE, glm::value_ptr(glm::perspective(
-						m_rig->get_camera_two()->get_fov(),
-						m_rig->get_camera_two()->get_ratio(),
-						m_rig->get_camera_two()->get_near(),
-						m_rig->get_camera_two()->get_far())));
-				glUniform3fv(m_lighting_shader_camera_position, GL_FALSE, glm::value_ptr(m_rig->get_position()));
 				//~ //Binding vao
 				glBindVertexArray(m_quad_right->get_vao());
 				//~ //Drawing

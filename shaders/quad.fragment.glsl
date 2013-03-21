@@ -17,4 +17,5 @@ void main()
 	vec3 two = vec3(two_texture.r, 1.0, 1.0);
 	
 	color = vec3(one.rgb * two.rgb);
+	//color = vec3(one_texture.rgb);
 }

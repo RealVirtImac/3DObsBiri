@@ -70,6 +70,8 @@ class Framebuffer
 		 */ 
 		GLuint* get_texture_color_id() const;
 		
+		GLuint get_depth_texture_id() const;
+		
 		unsigned int get_number_of_color_textures() const;
 		
 		GLenum* get_draw_buffers() const;

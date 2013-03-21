@@ -173,6 +173,17 @@ class Renderer
 		GLuint m_geometry_buffer_shader_projection_matrix_location;
 		GLuint m_geometry_buffer_shader_diffuse_location;
 
+		GLuint m_light_accumulation_shader_program;
+		GLuint m_light_accumulation_camera_position_location;
+		GLuint m_light_accumulation_light_position_location;
+		GLuint m_light_accumulation_light_color_location;
+		GLuint m_light_accumulation_light_intensity_location;
+		GLuint m_light_accumulation_material_location;
+		GLuint m_light_accumulation_normal_location;
+		GLuint m_light_accumulation_depth_location;
+		GLuint m_light_accumulation_view_matrix_location;
+		GLuint m_light_accumulation_projection_matrix_location;
+
 		float m_lightIntensity;
 		float m_radiusLight;
 		
