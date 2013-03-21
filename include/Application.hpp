@@ -99,4 +99,7 @@ class Application
 		bool m_display_gui;
 		
 		bool m_has_focus_changed;
+		
+		Uint32 m_start;
+		int m_nb_frames;
 };

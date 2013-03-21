@@ -38,7 +38,9 @@ Application::Application():
 	m_display(NULL),
 	m_joystick(NULL),
 	m_display_gui(true),
-	m_has_focus_changed(false)
+	m_has_focus_changed(false),
+	m_start(SDL_GetTicks()),
+	m_nb_frames(0)
 {
 }
 
@@ -106,6 +108,17 @@ int Application::on_execute()
 		this->on_loop();
 		
 		this->on_render();
+		Uint32 end = SDL_GetTicks();
+		if(end-m_start >= 1000)
+		{
+			std::cout << m_nb_frames << " images par secondes." << std::endl;
+			m_nb_frames = 0;
+			m_start = SDL_GetTicks();
+		}
+		else
+		{
+			++m_nb_frames;
+		}
 	}
 	
 	this->on_cleanup();
