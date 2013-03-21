@@ -2,6 +2,14 @@
 *.slo
 *.lo
 *.o
+*~
+
+models/*
+textures/*
+
+!models/quad.obj
+
+3DObs
 
 # Compiled Dynamic libraries
 *.so
@@ -11,3 +19,20 @@
 *.lai
 *.la
 *.a
+
+#IDE's files
+*.config
+*.creator
+*.creator.user
+*.files
+*.includes
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+Icon?
+ehthumbs.db
+Thumbs.db
