@@ -1,5 +1,6 @@
 #version 150
 #extension GL_ARB_explicit_attrib_location : enable
+#extension GL_ARB_gpu_shader5 : enable
 
 uniform vec3 camera_position;
 uniform vec3 light_position;
