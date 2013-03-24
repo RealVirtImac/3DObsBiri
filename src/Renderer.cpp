@@ -45,11 +45,12 @@ Renderer::Renderer(int width, int height):
 	m_selected_model(""),
 	m_selected_texture(""),
 	m_keyboard_layout(0),
-	m_ssao_biais_value(0.05f),
-	m_ssao_radius_value(0.02f),
-	m_ssao_scale_value(1.0f),
-	m_ssao_nb_samples_value(1),
-	m_blur_coef_value(1)
+	m_ssao_biais_value(1.50f),
+	m_ssao_radius_value(0.06f),
+	m_ssao_scale_value(2.0f),
+	m_ssao_nb_samples_value(16),
+	m_blur_coef_value(8),
+	m_is_ssao_enabled(false)
 {
 	GLenum error;
 	if((error = glewInit()) != GLEW_OK) {
@@ -88,6 +89,7 @@ Renderer::Renderer(int width, int height):
 	m_light_accumulation_shader_program = loadProgram("shaders/light_accumulation.vertex.glsl","shaders/light_accumulation.fragment.glsl");
 	m_ssao_shader_program = loadProgram("shaders/ssao.vertex.glsl","shaders/ssao.fragment.glsl");
 	m_blur_shader_program = loadProgram("shaders/blur.vertex.glsl","shaders/blur.fragment.glsl");
+	m_ssao_blend_shader_program = loadProgram("shaders/ssao_blend.vertex.glsl","shaders/ssao_blend.fragment.glsl");
 	
 	//~ Locating uniforms
 	m_basic_shader_model_matrix_position = glGetUniformLocation(m_basic_shader_program,"model_matrix");
@@ -142,6 +144,9 @@ Renderer::Renderer(int width, int height):
 	//~ Adding some parameters
 	glBindFragDataLocation(m_blur_shader_program, 0, "OutColor");
 
+	m_ssao_blend_color_map_location = glGetUniformLocation(m_ssao_blend_shader_program,"ColorMap");
+	m_ssao_blend_occlusion_map_location = glGetUniformLocation(m_ssao_blend_shader_program,"OcclusionMap");
+
 	load_normal_map();
 
 	m_lightIntensity = 15.5f;
@@ -160,6 +165,8 @@ Renderer::Renderer(int width, int height):
 	m_geometry_buffer_framebuffer = new Framebuffer(3,m_width,m_height);
 	m_ssao_framebuffer = new Framebuffer(1,m_width,m_height);
 	m_blur_ssao_framebuffer = new Framebuffer(1,m_width,m_height);
+	m_left_ssao_blend_framebuffer = new Framebuffer(1,m_width,m_height);
+	m_right_ssao_blend_framebuffer = new Framebuffer(1,m_width,m_height);
 
 	//~ //Default view : Anaglyph
 	m_view_mode = 0;
@@ -173,6 +180,8 @@ Renderer::~Renderer()
 	delete m_geometry_buffer_framebuffer;
 	delete m_ssao_framebuffer;
 	delete m_blur_ssao_framebuffer;
+	delete m_left_ssao_blend_framebuffer;
+	delete m_right_ssao_blend_framebuffer;
 	//~ Deleting objects
 	delete m_object;
 	delete m_quad_left;
@@ -285,6 +294,10 @@ void Renderer::render()
 			glBindVertexArray(0);
 			glBindFramebuffer(GL_FRAMEBUFFER, 0);
 			//~ ------------------------------------------------------------------------------------------------------------
+			//~ Blending Occlusion Map and Light Accumulation map
+			//~ ------------------------------------------------------------------------------------------------------------
+			blend_SSAO(m_left_ssao_blend_framebuffer, m_left_camera_framebuffer->get_texture_color_id()[0],m_blur_ssao_framebuffer->get_texture_color_id()[0]);
+			//~ ------------------------------------------------------------------------------------------------------------
 			//~ Rendering the second geometry buffer
 			//~ ------------------------------------------------------------------------------------------------------------
 			//~ //Initializing the parameters
@@ -364,6 +377,10 @@ void Renderer::render()
 			glBindVertexArray(0);
 			glBindFramebuffer(GL_FRAMEBUFFER, 0);
 			//~ ------------------------------------------------------------------------------------------------------------
+			//~ Blending Occlusion Map and Light Accumulation map
+			//~ ------------------------------------------------------------------------------------------------------------
+			blend_SSAO(m_right_ssao_blend_framebuffer, m_right_camera_framebuffer->get_texture_color_id()[0],m_blur_ssao_framebuffer->get_texture_color_id()[0]);
+			//~ ------------------------------------------------------------------------------------------------------------
 			//~ Rendering the final view
 			//~ ------------------------------------------------------------------------------------------------------------
 			//~ //Anaglyph
@@ -375,12 +392,24 @@ void Renderer::render()
 				//~ //Choosing shader
 				glUseProgram(m_quad_shader);
 				//~ //Sending uniforms
-				glActiveTexture(GL_TEXTURE0);
-				glBindTexture(GL_TEXTURE_2D, m_left_camera_framebuffer->get_texture_color_id()[0]);
-				glUniform1i(m_quad_shader_texture_1, 0);
-				glActiveTexture(GL_TEXTURE1);
-				glBindTexture(GL_TEXTURE_2D, m_right_camera_framebuffer->get_texture_color_id()[0]);
-				glUniform1i(m_quad_shader_texture_2, 1);
+				if(m_is_ssao_enabled)
+				{
+					glActiveTexture(GL_TEXTURE0);
+					glBindTexture(GL_TEXTURE_2D, m_left_ssao_blend_framebuffer->get_texture_color_id()[0]);
+					glUniform1i(m_quad_shader_texture_1, 0);
+					glActiveTexture(GL_TEXTURE1);
+					glBindTexture(GL_TEXTURE_2D, m_right_ssao_blend_framebuffer->get_texture_color_id()[0]);
+					glUniform1i(m_quad_shader_texture_2, 1);
+				}
+				else
+				{
+					glActiveTexture(GL_TEXTURE0);
+					glBindTexture(GL_TEXTURE_2D, m_left_camera_framebuffer->get_texture_color_id()[0]);
+					glUniform1i(m_quad_shader_texture_1, 0);
+					glActiveTexture(GL_TEXTURE1);
+					glBindTexture(GL_TEXTURE_2D, m_right_camera_framebuffer->get_texture_color_id()[0]);
+					glUniform1i(m_quad_shader_texture_2, 1);
+				}
 				//~ //Binding vao
 				glBindVertexArray(m_quad_left->get_vao());
 				//~ //Drawing
@@ -399,12 +428,24 @@ void Renderer::render()
 				//~ //Choosing shader
 				glUseProgram(m_quad_shader);
 				//~ //Sending uniforms
-				glActiveTexture(GL_TEXTURE0);
-				glBindTexture(GL_TEXTURE_2D, m_left_camera_framebuffer->get_texture_color_id()[0]);
-				glUniform1i(m_quad_shader_texture_1, 0);
-				glActiveTexture(GL_TEXTURE1);
-				glBindTexture(GL_TEXTURE_2D, m_left_camera_framebuffer->get_texture_color_id()[0]);
-				glUniform1i(m_quad_shader_texture_2, 1);
+				if(!m_is_ssao_enabled)
+				{
+					glActiveTexture(GL_TEXTURE0);
+					glBindTexture(GL_TEXTURE_2D, m_left_camera_framebuffer->get_texture_color_id()[0]);
+					glUniform1i(m_quad_shader_texture_1, 0);
+					glActiveTexture(GL_TEXTURE1);
+					glBindTexture(GL_TEXTURE_2D, m_left_camera_framebuffer->get_texture_color_id()[0]);
+					glUniform1i(m_quad_shader_texture_2, 1);
+				}
+				else
+				{
+					glActiveTexture(GL_TEXTURE0);
+					glBindTexture(GL_TEXTURE_2D, m_left_ssao_blend_framebuffer->get_texture_color_id()[0]);
+					glUniform1i(m_quad_shader_texture_1, 0);
+					glActiveTexture(GL_TEXTURE1);
+					glBindTexture(GL_TEXTURE_2D, m_left_ssao_blend_framebuffer->get_texture_color_id()[0]);
+					glUniform1i(m_quad_shader_texture_2, 1);
+				}
 				//~ //Binding vao
 				glBindVertexArray(m_quad_left->get_vao());
 				//~ //Drawing
@@ -416,13 +457,26 @@ void Renderer::render()
 				glViewport(m_width/2, 0, m_width/2, m_height);
 				//~ //Choosing shader
 				glUseProgram(m_quad_shader);
-				//~ //Sending uniforms
-				glActiveTexture(GL_TEXTURE0);
-				glBindTexture(GL_TEXTURE_2D, m_right_camera_framebuffer->get_texture_color_id()[0]);
-				glUniform1i(m_quad_shader_texture_1, 0);
-				glActiveTexture(GL_TEXTURE1);
-				glBindTexture(GL_TEXTURE_2D, m_right_camera_framebuffer->get_texture_color_id()[0]);
-				glUniform1i(m_quad_shader_texture_2, 1);
+				if(!m_is_ssao_enabled)
+				{
+					//~ //Sending uniforms
+					glActiveTexture(GL_TEXTURE0);
+					glBindTexture(GL_TEXTURE_2D, m_right_camera_framebuffer->get_texture_color_id()[0]);
+					glUniform1i(m_quad_shader_texture_1, 0);
+					glActiveTexture(GL_TEXTURE1);
+					glBindTexture(GL_TEXTURE_2D, m_right_camera_framebuffer->get_texture_color_id()[0]);
+					glUniform1i(m_quad_shader_texture_2, 1);
+				}
+				else
+				{
+					//~ //Sending uniforms
+					glActiveTexture(GL_TEXTURE0);
+					glBindTexture(GL_TEXTURE_2D, m_right_ssao_blend_framebuffer->get_texture_color_id()[0]);
+					glUniform1i(m_quad_shader_texture_1, 0);
+					glActiveTexture(GL_TEXTURE1);
+					glBindTexture(GL_TEXTURE_2D, m_right_ssao_blend_framebuffer->get_texture_color_id()[0]);
+					glUniform1i(m_quad_shader_texture_2, 1);
+				}
 				//~ //Binding vao
 				glBindVertexArray(m_quad_right->get_vao());
 				//~ //Drawing
@@ -745,7 +799,6 @@ void Renderer::render_SSAO(const GLuint positions_map, const GLuint normals_map,
 	glBindVertexArray(m_quad_left->get_vao());
 	//~ //Drawing
 	glDrawArrays(GL_TRIANGLES, 0, m_quad_left->get_size());
-
 	//~ //Unbind
 	glBindVertexArray(0);
 	glBindFramebuffer(GL_FRAMEBUFFER, 0);
@@ -769,10 +822,41 @@ void Renderer::blur(const GLuint texture_to_blur)
 	glBindVertexArray(m_quad_left->get_vao());
 	//~ //Drawing
 	glDrawArrays(GL_TRIANGLES, 0, m_quad_left->get_size());
-
 	//~ //Unbind
 	glBindVertexArray(0);
 	glBindFramebuffer(GL_FRAMEBUFFER, 0);
+}
+
+void Renderer::blend_SSAO(const Framebuffer* output_frambuffer, const GLuint color_map, const GLuint occlusion_map)
+{
+	glBindFramebuffer(GL_FRAMEBUFFER, output_frambuffer->get_framebuffer_id());
+	glDrawBuffers(output_frambuffer->get_number_of_color_textures(), output_frambuffer->get_draw_buffers());
+	glViewport(0, 0, m_width, m_height);
+	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+	//~ Choosing the geometry buffer
+	glUseProgram(m_ssao_blend_shader_program);
+	
+	//~ Sending uniforms
+	glActiveTexture(GL_TEXTURE0);
+	glBindTexture(GL_TEXTURE_2D, color_map);
+	glUniform1i(m_ssao_blend_color_map_location, 0);
+	
+	glActiveTexture(GL_TEXTURE1);
+	glBindTexture(GL_TEXTURE_2D, occlusion_map);
+	glUniform1i(m_ssao_blend_occlusion_map_location, 1);
+	
+	//~ Binding VAO
+	glBindVertexArray(m_quad_left->get_vao());
+	//~ Drawing
+	glDrawArrays(GL_TRIANGLES, 0, m_quad_left->get_size());
+	//~ Unbind
+	glBindVertexArray(0);
+	glBindFramebuffer(GL_FRAMEBUFFER, 0);
+}
+
+void Renderer::toggle_ssao(const int enable_disable)
+{
+	m_is_ssao_enabled = enable_disable;
 }
 
 //~ Getters

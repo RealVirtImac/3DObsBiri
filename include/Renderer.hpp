@@ -102,6 +102,13 @@ class Renderer
 		 * \param texture_to_blur The texture to be blur. The blur coefficient is available in its own slider in the GUI
 		 */
 		void blur(const GLuint texture_to_blur);
+		//! Blends the ssao map and the color map
+		/*!
+		 * \param color_map The texture to be blend with the occlusion map.
+		 * \param occlusion_map The occlusion map
+		 */ 
+		void blend_SSAO(const Framebuffer* output_frambuffer, const GLuint color_map, const GLuint occlusion_map);
+		void toggle_ssao(const int enable_disable);
 		//! Gets the rig maintaining the two cameras
 		/*!
 		 * \return The rig
@@ -211,6 +218,10 @@ class Renderer
 		GLuint m_blur_shader_program;
 		GLuint m_blur_texture_to_blur_location;
 		GLuint m_blur_coef_location;
+		
+		GLuint m_ssao_blend_shader_program;
+		GLuint m_ssao_blend_occlusion_map_location;
+		GLuint m_ssao_blend_color_map_location;
 
 		float m_lightIntensity;
 		float m_radiusLight;
@@ -220,6 +231,8 @@ class Renderer
 		Framebuffer* m_geometry_buffer_framebuffer;
 		Framebuffer* m_ssao_framebuffer;
 		Framebuffer* m_blur_ssao_framebuffer;
+		Framebuffer* m_left_ssao_blend_framebuffer;
+		Framebuffer* m_right_ssao_blend_framebuffer;
 		
 		bool m_display_gui;
 		
@@ -251,4 +264,6 @@ class Renderer
 		
 		//~ Blur
 		float m_blur_coef_value;
+		
+		bool m_is_ssao_enabled;
 };

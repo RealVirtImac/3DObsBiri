@@ -301,12 +301,16 @@ void Application::on_event(SDL_Event* Event)
 					m_renderer->set_view_mode(0);
 			break;
 			//~ Arrow up
-                        case SDLK_p : m_renderer->get_rig()->change_dioc(0.005,m_renderer->get_dc(), m_renderer->get_l());
+			case SDLK_p : m_renderer->get_rig()->change_dioc(0.005,m_renderer->get_dc(), m_renderer->get_l());
 			break;
 			//~ Arrow down
-                        case SDLK_l : m_renderer->get_rig()->change_dioc(-0.005,m_renderer->get_dc(), m_renderer->get_l());
+			case SDLK_l : m_renderer->get_rig()->change_dioc(-0.005,m_renderer->get_dc(), m_renderer->get_l());
 			break;
-                        case SDLK_o : m_renderer->get_rig()->reset_dioc(m_renderer->get_dc(), m_renderer->get_l());
+			case SDLK_o : m_renderer->get_rig()->reset_dioc(m_renderer->get_dc(), m_renderer->get_l());
+			break;
+			case SDLK_e : m_renderer->toggle_ssao(true);
+			break;
+			case SDLK_d : m_renderer->toggle_ssao(false);
 			break;
 			default : ;
 			break;
