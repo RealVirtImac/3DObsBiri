@@ -158,10 +158,8 @@ Renderer::Renderer(int width, int height):
 	m_left_camera_framebuffer = new Framebuffer(1,m_width,m_height);
 	m_right_camera_framebuffer = new Framebuffer(1,m_width,m_height);
 	m_geometry_buffer_framebuffer = new Framebuffer(3,m_width,m_height);
-	m_left_ssao_framebuffer = new Framebuffer(1,m_width,m_height);
-	m_right_ssao_framebuffer = new Framebuffer(1,m_width,m_height);
-	m_left_blur_ssao_framebuffer = new Framebuffer(1,m_width,m_height);
-	m_right_blur_ssao_framebuffer = new Framebuffer(1,m_width,m_height);
+	m_ssao_framebuffer = new Framebuffer(1,m_width,m_height);
+	m_blur_ssao_framebuffer = new Framebuffer(1,m_width,m_height);
 
 	//~ //Default view : Anaglyph
 	m_view_mode = 0;
@@ -173,10 +171,8 @@ Renderer::~Renderer()
 	delete m_left_camera_framebuffer;
 	delete m_right_camera_framebuffer;
 	delete m_geometry_buffer_framebuffer;
-	delete m_left_ssao_framebuffer;
-	delete m_right_ssao_framebuffer;
-	delete m_left_blur_ssao_framebuffer;
-	delete m_right_blur_ssao_framebuffer;
+	delete m_ssao_framebuffer;
+	delete m_blur_ssao_framebuffer;
 	//~ Deleting objects
 	delete m_object;
 	delete m_quad_left;
@@ -236,58 +232,11 @@ void Renderer::render()
 			//~ ------------------------------------------------------------------------------------------------------------
 			//~ Rendering the SSAO for the first camera
 			//~ ------------------------------------------------------------------------------------------------------------
-			glBindFramebuffer(GL_FRAMEBUFFER, m_left_ssao_framebuffer->get_framebuffer_id());
-			glDrawBuffers(m_left_ssao_framebuffer->get_number_of_color_textures(), m_left_ssao_framebuffer->get_draw_buffers());
-			glViewport( 0, 0, m_width, m_height);
-			glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-			glUseProgram(m_ssao_shader_program);
-
-			glUniform1i(m_ssao_normals_texture_location, 0);
-			glUniform1i(m_ssao_positions_texture_location, 1);
-			glUniform1i(m_ssao_normal_map_location, 2);
-			glUniform1f(m_ssao_biais_location, m_ssao_biais_value);
-			glUniform1f(m_ssao_radius_location, m_ssao_radius_value);
-			glUniform1f(m_ssao_scale_location, m_ssao_scale_value);
-			glUniform1f(m_ssao_nb_samples_location, m_ssao_nb_samples_value);
-
-			glActiveTexture(GL_TEXTURE0);
-			glBindTexture(GL_TEXTURE_2D, m_geometry_buffer_framebuffer->get_texture_color_id()[1]);
-			glActiveTexture(GL_TEXTURE1);
-			glBindTexture(GL_TEXTURE_2D, m_geometry_buffer_framebuffer->get_texture_color_id()[2]);
-			glActiveTexture(GL_TEXTURE2);
-			glBindTexture(GL_TEXTURE_2D, m_normal_map_texture);
-			
-			//~ //Binding vao
-			glBindVertexArray(m_quad_left->get_vao());
-			//~ //Drawing
-			glDrawArrays(GL_TRIANGLES, 0, m_quad_left->get_size());
-
-			//~ //Unbind
-			glBindVertexArray(0);
-			glBindFramebuffer(GL_FRAMEBUFFER, 0);
+			render_SSAO(m_geometry_buffer_framebuffer->get_texture_color_id()[1],m_geometry_buffer_framebuffer->get_texture_color_id()[2],m_normal_map_texture);
 			//~ ------------------------------------------------------------------------------------------------------------
 			//~ Bluring the first SSAO
 			//~ ------------------------------------------------------------------------------------------------------------
-			glBindFramebuffer(GL_FRAMEBUFFER, m_left_blur_ssao_framebuffer->get_framebuffer_id());
-			glDrawBuffers(m_left_blur_ssao_framebuffer->get_number_of_color_textures(), m_left_blur_ssao_framebuffer->get_draw_buffers());
-			glViewport( 0, 0, m_width, m_height);
-			glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-			glUseProgram(m_blur_shader_program);
-
-			glUniform1i(m_blur_texture_to_blur_location,0);
-			glUniform1f(m_blur_coef_location,m_blur_coef_value);
-
-			glActiveTexture(GL_TEXTURE0);
-			glBindTexture(GL_TEXTURE_2D, m_left_ssao_framebuffer->get_texture_color_id()[0]);
-			
-			//~ //Binding vao
-			glBindVertexArray(m_quad_left->get_vao());
-			//~ //Drawing
-			glDrawArrays(GL_TRIANGLES, 0, m_quad_left->get_size());
-
-			//~ //Unbind
-			glBindVertexArray(0);
-			glBindFramebuffer(GL_FRAMEBUFFER, 0);
+			blur(m_ssao_framebuffer->get_texture_color_id()[0]);
 			//~ ------------------------------------------------------------------------------------------------------------
 			//~ Rendering the first camera
 			//~ ------------------------------------------------------------------------------------------------------------
@@ -362,58 +311,11 @@ void Renderer::render()
 			//~ ------------------------------------------------------------------------------------------------------------
 			//~ Rendering the SSAO for the second camera
 			//~ ------------------------------------------------------------------------------------------------------------
-			glBindFramebuffer(GL_FRAMEBUFFER, m_right_ssao_framebuffer->get_framebuffer_id());
-			glDrawBuffers(m_right_ssao_framebuffer->get_number_of_color_textures(), m_right_ssao_framebuffer->get_draw_buffers());
-			glViewport( 0, 0, m_width, m_height);
-			glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-			glUseProgram(m_ssao_shader_program);
-
-			glUniform1i(m_ssao_normals_texture_location, 0);
-			glUniform1i(m_ssao_positions_texture_location, 1);
-			glUniform1i(m_ssao_normal_map_location, 2);
-			glUniform1f(m_ssao_biais_location, m_ssao_biais_value);
-			glUniform1f(m_ssao_radius_location, m_ssao_radius_value);
-			glUniform1f(m_ssao_scale_location, m_ssao_scale_value);
-			glUniform1f(m_ssao_nb_samples_location, m_ssao_nb_samples_value);
-
-			glActiveTexture(GL_TEXTURE0);
-			glBindTexture(GL_TEXTURE_2D, m_geometry_buffer_framebuffer->get_texture_color_id()[1]);
-			glActiveTexture(GL_TEXTURE1);
-			glBindTexture(GL_TEXTURE_2D, m_geometry_buffer_framebuffer->get_texture_color_id()[2]);
-			glActiveTexture(GL_TEXTURE2);
-			glBindTexture(GL_TEXTURE_2D, m_normal_map_texture);
-			
-			//~ //Binding vao
-			glBindVertexArray(m_quad_left->get_vao());
-			//~ //Drawing
-			glDrawArrays(GL_TRIANGLES, 0, m_quad_left->get_size());
-
-			//~ //Unbind
-			glBindVertexArray(0);
-			glBindFramebuffer(GL_FRAMEBUFFER, 0);
+			render_SSAO(m_geometry_buffer_framebuffer->get_texture_color_id()[1],m_geometry_buffer_framebuffer->get_texture_color_id()[2],m_normal_map_texture);
 			//~ ------------------------------------------------------------------------------------------------------------
 			//~ Bluring the second SSAO
 			//~ ------------------------------------------------------------------------------------------------------------
-			glBindFramebuffer(GL_FRAMEBUFFER, m_right_blur_ssao_framebuffer->get_framebuffer_id());
-			glDrawBuffers(m_right_blur_ssao_framebuffer->get_number_of_color_textures(), m_right_blur_ssao_framebuffer->get_draw_buffers());
-			glViewport(0, 0, m_width, m_height);
-			glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-			glUseProgram(m_blur_shader_program);
-
-			glUniform1i(m_blur_texture_to_blur_location,0);
-			glUniform1f(m_blur_coef_location,m_blur_coef_value);
-
-			glActiveTexture(GL_TEXTURE0);
-			glBindTexture(GL_TEXTURE_2D, m_right_ssao_framebuffer->get_texture_color_id()[0]);
-			
-			//~ //Binding vao
-			glBindVertexArray(m_quad_left->get_vao());
-			//~ //Drawing
-			glDrawArrays(GL_TRIANGLES, 0, m_quad_left->get_size());
-
-			//~ //Unbind
-			glBindVertexArray(0);
-			glBindFramebuffer(GL_FRAMEBUFFER, 0);
+			blur(m_ssao_framebuffer->get_texture_color_id()[0]);
 			//~ ------------------------------------------------------------------------------------------------------------
 			//~ Rendering the second camera
 			//~ ------------------------------------------------------------------------------------------------------------
@@ -814,6 +716,63 @@ void Renderer::render_GUI()
 
 	glDisable(GL_BLEND);
 	glEnable(GL_DEPTH_TEST);
+}
+
+void Renderer::render_SSAO(const GLuint positions_map, const GLuint normals_map, const GLuint random_map)
+{
+	glBindFramebuffer(GL_FRAMEBUFFER, m_ssao_framebuffer->get_framebuffer_id());
+	glDrawBuffers(m_ssao_framebuffer->get_number_of_color_textures(), m_ssao_framebuffer->get_draw_buffers());
+	glViewport( 0, 0, m_width, m_height);
+	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+	glUseProgram(m_ssao_shader_program);
+
+	glUniform1i(m_ssao_normals_texture_location, 0);
+	glUniform1i(m_ssao_positions_texture_location, 1);
+	glUniform1i(m_ssao_normal_map_location, 2);
+	glUniform1f(m_ssao_biais_location, m_ssao_biais_value);
+	glUniform1f(m_ssao_radius_location, m_ssao_radius_value);
+	glUniform1f(m_ssao_scale_location, m_ssao_scale_value);
+	glUniform1f(m_ssao_nb_samples_location, m_ssao_nb_samples_value);
+
+	glActiveTexture(GL_TEXTURE0);
+	glBindTexture(GL_TEXTURE_2D, positions_map);
+	glActiveTexture(GL_TEXTURE1);
+	glBindTexture(GL_TEXTURE_2D, normals_map);
+	glActiveTexture(GL_TEXTURE2);
+	glBindTexture(GL_TEXTURE_2D, random_map);
+	
+	//~ //Binding vao
+	glBindVertexArray(m_quad_left->get_vao());
+	//~ //Drawing
+	glDrawArrays(GL_TRIANGLES, 0, m_quad_left->get_size());
+
+	//~ //Unbind
+	glBindVertexArray(0);
+	glBindFramebuffer(GL_FRAMEBUFFER, 0);
+}
+
+void Renderer::blur(const GLuint texture_to_blur)
+{
+	glBindFramebuffer(GL_FRAMEBUFFER, m_blur_ssao_framebuffer->get_framebuffer_id());
+	glDrawBuffers(m_blur_ssao_framebuffer->get_number_of_color_textures(), m_blur_ssao_framebuffer->get_draw_buffers());
+	glViewport(0, 0, m_width, m_height);
+	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+	glUseProgram(m_blur_shader_program);
+
+	glUniform1i(m_blur_texture_to_blur_location,0);
+	glUniform1f(m_blur_coef_location,m_blur_coef_value);
+
+	glActiveTexture(GL_TEXTURE0);
+	glBindTexture(GL_TEXTURE_2D, texture_to_blur);
+	
+	//~ //Binding vao
+	glBindVertexArray(m_quad_left->get_vao());
+	//~ //Drawing
+	glDrawArrays(GL_TRIANGLES, 0, m_quad_left->get_size());
+
+	//~ //Unbind
+	glBindVertexArray(0);
+	glBindFramebuffer(GL_FRAMEBUFFER, 0);
 }
 
 //~ Getters

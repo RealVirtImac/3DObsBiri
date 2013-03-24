@@ -90,6 +90,18 @@ class Renderer
 		void load_normal_map();
 		//! Renders the GUI
 		void render_GUI();
+		//! Renders the Space Screen Ambient Occlusion map
+		/*!
+		 * \param positions_map The texture containing the positions. Can be found in the geometry buffer
+		 * \param normals_map The texture containing the normals. Can be found in the geometry buffer
+		 * \param random_map The texture containing the random data needed by the SSAO technique
+		 */ 
+		void render_SSAO(const GLuint positions_map, const GLuint normals_map, const GLuint random_map);
+		//! Blurs a texture
+		/*!
+		 * \param texture_to_blur The texture to be blur. The blur coefficient is available in its own slider in the GUI
+		 */
+		void blur(const GLuint texture_to_blur);
 		//! Gets the rig maintaining the two cameras
 		/*!
 		 * \return The rig
@@ -206,10 +218,8 @@ class Renderer
 		Framebuffer* m_left_camera_framebuffer;
 		Framebuffer* m_right_camera_framebuffer;
 		Framebuffer* m_geometry_buffer_framebuffer;
-		Framebuffer* m_left_ssao_framebuffer;
-		Framebuffer* m_right_ssao_framebuffer;
-		Framebuffer* m_left_blur_ssao_framebuffer;
-		Framebuffer* m_right_blur_ssao_framebuffer;
+		Framebuffer* m_ssao_framebuffer;
+		Framebuffer* m_blur_ssao_framebuffer;
 		
 		bool m_display_gui;
 		
