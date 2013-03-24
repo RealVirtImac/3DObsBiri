@@ -9,6 +9,7 @@ textures/*
 
 !models/quad.obj
 !textures/white.png
+!textures/normalmap.jpg
 
 3DObs
 

@@ -37,7 +37,7 @@ Object::Object(const char* filename, const char* texture_path) throw (int)
 {
 
 	//~ Creating the scene of the model
-	const aiScene* scene = aiImportFile(filename,aiProcess_FlipUVs | aiProcess_Triangulate);
+	const aiScene* scene = aiImportFile(filename,aiProcess_FlipUVs | aiProcess_Triangulate | aiProcess_FixInfacingNormals);
 	if(!scene)
 	{
 		throw(0);

@@ -44,7 +44,11 @@ Renderer::Renderer(int width, int height):
 	m_l(4.0f),
 	m_selected_model(""),
 	m_selected_texture(""),
-	m_keyboard_layout(0)
+	m_keyboard_layout(0),
+	m_ssao_biais_value(0.05f),
+	m_ssao_radius_value(0.02f),
+	m_ssao_scale_value(1.0f),
+	m_ssao_nb_samples_value(1)
 {
 	GLenum error;
 	if((error = glewInit()) != GLEW_OK) {
@@ -81,6 +85,7 @@ Renderer::Renderer(int width, int height):
 	m_quad_shader = loadProgram("shaders/quad.vertex.glsl","shaders/quad.fragment.glsl");
 	m_geometry_buffer_shader_program = loadProgram("shaders/geometry_buffer.vertex.glsl","shaders/geometry_buffer.fragment.glsl");
 	m_light_accumulation_shader_program = loadProgram("shaders/light_accumulation.vertex.glsl","shaders/light_accumulation.fragment.glsl");
+	m_ssao_shader_program = loadProgram("shaders/ssao.vertex.glsl","shaders/ssao.fragment.glsl");
 	
 	//~ Locating uniforms
 	m_basic_shader_model_matrix_position = glGetUniformLocation(m_basic_shader_program,"model_matrix");
@@ -120,6 +125,18 @@ Renderer::Renderer(int width, int height):
 	//~ Adding some parameters
 	glBindFragDataLocation(m_light_accumulation_shader_program, 0, "out_frag_color");
 
+	m_ssao_radius_location = glGetUniformLocation(m_ssao_shader_program,"SamplingRadius");
+	m_ssao_biais_location = glGetUniformLocation(m_ssao_shader_program,"OcclusionBias");
+	m_ssao_scale_location = glGetUniformLocation(m_ssao_shader_program,"Scale");
+	m_ssao_normals_texture_location = glGetUniformLocation(m_ssao_shader_program,"Normals");
+	m_ssao_positions_texture_location = glGetUniformLocation(m_ssao_shader_program,"Positions");
+	m_ssao_normal_map_location = glGetUniformLocation(m_ssao_shader_program,"NormalMap");
+	m_ssao_nb_samples_location = glGetUniformLocation(m_ssao_shader_program,"NbSamples");
+	//~ Adding some parameters
+	glBindFragDataLocation(m_ssao_shader_program, 0, "Color");
+
+	load_normal_map();
+
 	m_lightIntensity = 15.5f;
 	m_radiusLight = 4.8f;
 	
@@ -134,6 +151,8 @@ Renderer::Renderer(int width, int height):
 	m_left_camera_framebuffer = new Framebuffer(1,m_width,m_height);
 	m_right_camera_framebuffer = new Framebuffer(1,m_width,m_height);
 	m_geometry_buffer_framebuffer = new Framebuffer(3,m_width,m_height);
+	m_left_ssao_framebuffer = new Framebuffer(1,m_width,m_height);
+	m_right_ssao_framebuffer = new Framebuffer(1,m_width,m_height);
 
 	//~ //Default view : Anaglyph
 	m_view_mode = 0;
@@ -145,6 +164,8 @@ Renderer::~Renderer()
 	delete m_left_camera_framebuffer;
 	delete m_right_camera_framebuffer;
 	delete m_geometry_buffer_framebuffer;
+	delete m_left_ssao_framebuffer;
+	delete m_right_ssao_framebuffer;
 	//~ Deleting objects
 	delete m_object;
 	delete m_quad_left;
@@ -177,7 +198,6 @@ void Renderer::render()
 			light_position.push_back(glm::vec3(m_radiusLight,m_radiusLight,-m_radiusLight));
 			
 			glm::vec3 light_color = glm::vec3(1.0f,1.0f,1.0f);
-			float light_intensity = 10.5f;
 			//~ ------------------------------------------------------------------------------------------------------------
 			//~ Rendering the first geometry buffer
 			//~ ------------------------------------------------------------------------------------------------------------
@@ -200,6 +220,38 @@ void Renderer::render()
 			//~ Drawing
 			glDrawArrays(GL_TRIANGLES, 0, m_object->get_size());
 			//~ Unbind
+			glBindVertexArray(0);
+			glBindFramebuffer(GL_FRAMEBUFFER, 0);
+			//~ ------------------------------------------------------------------------------------------------------------
+			//~ Rendering the SSAO for the first camera
+			//~ ------------------------------------------------------------------------------------------------------------
+			glBindFramebuffer(GL_FRAMEBUFFER, m_left_ssao_framebuffer->get_framebuffer_id());
+			glDrawBuffers(m_left_ssao_framebuffer->get_number_of_color_textures(), m_left_ssao_framebuffer->get_draw_buffers());
+			glViewport( 0, 0, m_width, m_height);
+			glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+			glUseProgram(m_ssao_shader_program);
+
+			glUniform1i(m_ssao_normals_texture_location, 0);
+			glUniform1i(m_ssao_positions_texture_location, 1);
+			glUniform1i(m_ssao_normal_map_location, 2);
+			glUniform1f(m_ssao_biais_location, m_ssao_biais_value);
+			glUniform1f(m_ssao_radius_location, m_ssao_radius_value);
+			glUniform1f(m_ssao_scale_location, m_ssao_scale_value);
+			glUniform1f(m_ssao_nb_samples_location, m_ssao_nb_samples_value);
+
+			glActiveTexture(GL_TEXTURE0);
+			glBindTexture(GL_TEXTURE_2D, m_geometry_buffer_framebuffer->get_texture_color_id()[1]);
+			glActiveTexture(GL_TEXTURE1);
+			glBindTexture(GL_TEXTURE_2D, m_geometry_buffer_framebuffer->get_texture_color_id()[2]);
+			glActiveTexture(GL_TEXTURE2);
+			glBindTexture(GL_TEXTURE_2D, m_normal_map_texture);
+			
+			//~ //Binding vao
+			glBindVertexArray(m_quad_left->get_vao());
+			//~ //Drawing
+			glDrawArrays(GL_TRIANGLES, 0, m_quad_left->get_size());
+
+			//~ //Unbind
 			glBindVertexArray(0);
 			glBindFramebuffer(GL_FRAMEBUFFER, 0);
 			//~ ------------------------------------------------------------------------------------------------------------
@@ -237,7 +289,7 @@ void Renderer::render()
 				//~ Sending uniforms
 				glUniform3fv(m_light_accumulation_light_position_location, 1, glm::value_ptr(light_position.at(i)));
 				glUniform3fv(m_light_accumulation_light_color_location, 1, glm::value_ptr(light_color));
-				glUniform1f(m_light_accumulation_light_intensity_location, light_intensity);
+				glUniform1f(m_light_accumulation_light_intensity_location, m_lightIntensity);
 				//~ Binding vao
 				glBindVertexArray(m_quad_left->get_vao());
 				//~ Drawing
@@ -270,6 +322,38 @@ void Renderer::render()
 			glBindVertexArray(m_object->get_vao());
 			//~ //Drawing
 			glDrawArrays(GL_TRIANGLES, 0, m_object->get_size());
+			//~ //Unbind
+			glBindVertexArray(0);
+			glBindFramebuffer(GL_FRAMEBUFFER, 0);
+			//~ ------------------------------------------------------------------------------------------------------------
+			//~ Rendering the SSAO for the second camera
+			//~ ------------------------------------------------------------------------------------------------------------
+			glBindFramebuffer(GL_FRAMEBUFFER, m_right_ssao_framebuffer->get_framebuffer_id());
+			glDrawBuffers(m_right_ssao_framebuffer->get_number_of_color_textures(), m_right_ssao_framebuffer->get_draw_buffers());
+			glViewport( 0, 0, m_width, m_height);
+			glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+			glUseProgram(m_ssao_shader_program);
+
+			glUniform1i(m_ssao_normals_texture_location, 0);
+			glUniform1i(m_ssao_positions_texture_location, 1);
+			glUniform1i(m_ssao_normal_map_location, 2);
+			glUniform1f(m_ssao_biais_location, m_ssao_biais_value);
+			glUniform1f(m_ssao_radius_location, m_ssao_radius_value);
+			glUniform1f(m_ssao_scale_location, m_ssao_scale_value);
+			glUniform1f(m_ssao_nb_samples_location, m_ssao_nb_samples_value);
+
+			glActiveTexture(GL_TEXTURE0);
+			glBindTexture(GL_TEXTURE_2D, m_geometry_buffer_framebuffer->get_texture_color_id()[1]);
+			glActiveTexture(GL_TEXTURE1);
+			glBindTexture(GL_TEXTURE_2D, m_geometry_buffer_framebuffer->get_texture_color_id()[2]);
+			glActiveTexture(GL_TEXTURE2);
+			glBindTexture(GL_TEXTURE_2D, m_normal_map_texture);
+			
+			//~ //Binding vao
+			glBindVertexArray(m_quad_left->get_vao());
+			//~ //Drawing
+			glDrawArrays(GL_TRIANGLES, 0, m_quad_left->get_size());
+
 			//~ //Unbind
 			glBindVertexArray(0);
 			glBindFramebuffer(GL_FRAMEBUFFER, 0);
@@ -308,7 +392,7 @@ void Renderer::render()
 				//~ //Sending uniforms
 				glUniform3fv(m_light_accumulation_light_position_location, 1, glm::value_ptr(light_position.at(i)));
 				glUniform3fv(m_light_accumulation_light_color_location, 1, glm::value_ptr(light_color));
-				glUniform1f(m_light_accumulation_light_intensity_location, light_intensity);
+				glUniform1f(m_light_accumulation_light_intensity_location, m_lightIntensity);
 				//~ //Binding vao
 				glBindVertexArray(m_quad_left->get_vao());
 				//~ //Drawing
@@ -370,7 +454,6 @@ void Renderer::render()
 				glBindVertexArray(0);
 
 				//~ //Right view
-				glClearColor(0.0,0.0,0.0,1.0);
 				glViewport(m_width/2, 0, m_width/2, m_height);
 				//~ //Choosing shader
 				glUseProgram(m_quad_shader);
@@ -525,6 +608,26 @@ void Renderer::find_available_files(const char* directory,std::vector<std::strin
 	}
 }
 
+void Renderer::load_normal_map()
+{
+	//~ Declarating values : width, height, components per pixel
+	int w, h, comp;
+	//~ Calling stbi
+	unsigned char* normal_map = stbi_load((const char*)"textures/normalmap.jpg", &w, &h, &comp, 3);
+	//~ Processing texture
+	glGenTextures(1, &m_normal_map_texture);
+	glActiveTexture(GL_TEXTURE0);
+	glBindTexture(GL_TEXTURE_2D, m_normal_map_texture);
+	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, w, h, 0, GL_RGB, GL_UNSIGNED_BYTE, normal_map);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+	glBindTexture(GL_TEXTURE_2D, 0);
+	
+	stbi_image_free(normal_map);
+}
+
 void Renderer::load_object(const std::string model,const std::string texture)
 {
 	if(m_object != NULL) 
@@ -554,13 +657,13 @@ void Renderer::load_object(const std::string model,const std::string texture)
 
 	float avgDistToBarycentre = m_object->computeAvgDistToBarycentre();
 	float scale = (m_dc*(2.0f/3.0f))/avgDistToBarycentre;
-	m_object->set_model_matrix(glm::scale(m_object->get_model_matrix(),glm::vec3(scale,scale,scale)));
+	//m_object->set_model_matrix(glm::scale(m_object->get_model_matrix(),glm::vec3(scale,scale,scale)));
 
 	glm::vec3 barycentre = m_object->computeBarycentre();
 	barycentre *= scale;
-	m_object->set_model_matrix(glm::translate(m_object->get_model_matrix(),-barycentre));
+	//m_object->set_model_matrix(glm::translate(m_object->get_model_matrix(),-barycentre));
 
-	m_object->set_model_matrix(glm::rotate(m_object->get_model_matrix(), 90.0f, glm::vec3(0, 1, 0)));
+	//m_object->set_model_matrix(glm::rotate(m_object->get_model_matrix(), 90.0f, glm::vec3(0, 1, 0)));
 }
 
 void Renderer::render_GUI()
@@ -640,6 +743,12 @@ void Renderer::render_GUI()
 		imguiUnindent();
 	}
 	if(m_toggle) m_gui_keyboard_layout = !m_gui_keyboard_layout;
+	
+	imguiBeginScrollArea("Settings",m_width-200,0, 200, m_height, &logScroll);
+	imguiSlider("Biais", &m_ssao_biais_value, 0.0, 3.0, 0.01);
+	imguiSlider("Sampling radius", &m_ssao_radius_value, 0.0, 3.0, 0.01);
+	imguiSlider("Scale", &m_ssao_scale_value, 0.0, 3.0, 0.01);
+	imguiSlider("NbSamples", &m_ssao_nb_samples_value, 0.0, 64.0, 1.0);
 	
 	imguiEndScrollArea();
 	imguiEndFrame();

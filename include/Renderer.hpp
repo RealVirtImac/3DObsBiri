@@ -86,6 +86,8 @@ class Renderer
 		 * \param texture The texture to load
 		 */ 
 		void load_object(const std::string model,const std::string texture);
+		//! Loads the normal map
+		void load_normal_map();
 		//! Renders the GUI
 		void render_GUI();
 		//! Gets the rig maintaining the two cameras
@@ -135,7 +137,6 @@ class Renderer
 		 * \param layout the identifier of the keyboard
 		 */
 		void set_keyboard_layout(const int layout);
-		
 	private:
 		int m_width;
 		int m_height;
@@ -183,6 +184,17 @@ class Renderer
 		GLuint m_light_accumulation_depth_location;
 		GLuint m_light_accumulation_view_matrix_location;
 		GLuint m_light_accumulation_projection_matrix_location;
+		
+		GLuint m_ssao_shader_program;
+		GLuint m_ssao_radius_location;
+		GLuint m_ssao_biais_location;
+		GLuint m_ssao_scale_location;
+		GLuint m_ssao_normals_texture_location;
+		GLuint m_ssao_positions_texture_location;
+		GLuint m_ssao_normal_map_location;
+		GLuint m_ssao_nb_samples_location;
+		
+		GLuint m_normal_map_texture;
 
 		float m_lightIntensity;
 		float m_radiusLight;
@@ -190,6 +202,8 @@ class Renderer
 		Framebuffer* m_left_camera_framebuffer;
 		Framebuffer* m_right_camera_framebuffer;
 		Framebuffer* m_geometry_buffer_framebuffer;
+		Framebuffer* m_left_ssao_framebuffer;
+		Framebuffer* m_right_ssao_framebuffer;
 		
 		bool m_display_gui;
 		
@@ -212,4 +226,10 @@ class Renderer
 		//0 : AZERTY
 		//1 : QWERTY
 		int m_keyboard_layout;
+		
+		//~ SSAO
+		float m_ssao_biais_value;
+		float m_ssao_radius_value;
+		float m_ssao_scale_value;
+		float m_ssao_nb_samples_value;
 };
