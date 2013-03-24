@@ -195,6 +195,10 @@ class Renderer
 		GLuint m_ssao_nb_samples_location;
 		
 		GLuint m_normal_map_texture;
+		
+		GLuint m_blur_shader_program;
+		GLuint m_blur_texture_to_blur_location;
+		GLuint m_blur_coef_location;
 
 		float m_lightIntensity;
 		float m_radiusLight;
@@ -204,6 +208,8 @@ class Renderer
 		Framebuffer* m_geometry_buffer_framebuffer;
 		Framebuffer* m_left_ssao_framebuffer;
 		Framebuffer* m_right_ssao_framebuffer;
+		Framebuffer* m_left_blur_ssao_framebuffer;
+		Framebuffer* m_right_blur_ssao_framebuffer;
 		
 		bool m_display_gui;
 		
@@ -232,4 +238,7 @@ class Renderer
 		float m_ssao_radius_value;
 		float m_ssao_scale_value;
 		float m_ssao_nb_samples_value;
+		
+		//~ Blur
+		float m_blur_coef_value;
 };
