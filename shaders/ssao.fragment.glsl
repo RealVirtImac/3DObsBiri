@@ -3,7 +3,11 @@
 uniform sampler2D Normals;
 uniform sampler2D Positions;
 uniform sampler2D NormalMap;
+uniform sampler2D Depth;
 
+uniform mat4  modelMatrix;
+uniform mat4  viewMatrix;
+uniform mat4  projectionMatrix;
 uniform float NbSamples;
 uniform float SamplingRadius;
 uniform float OcclusionBias;
@@ -15,15 +19,15 @@ out vec4 Color;
  
 float doAmbientOcclusion(in vec2 tcoord, in vec2 uv, in vec3 original, in vec3 cnorm)
 {
-    vec3 newp = texture2D(Positions, tcoord+uv).rgb * 2.0 - 1.0;	
+    vec3 newp = texture2D(Positions, tcoord+uv).rgb;	
     vec3 diff = newp - original;
     vec3 v = normalize(diff);
     float d = length(diff) * Scale;
  
-    float ret = max(0.0, dot(cnorm, v) - OcclusionBias) * (3.0 / (1.0 + d));
+    float ret = max(0.0, dot(cnorm, v) - OcclusionBias) * (1.0 / (1.0 + d));
     return ret;
 }
- 
+
 void main(void)
 {    	
  	vec2 KERNEL[64];
@@ -92,18 +96,24 @@ void main(void)
 	KERNEL[62] = vec2(-0.545396, 0.538133);
 	KERNEL[63] = vec2(-0.178564, -0.596057);
  
-    vec3 p = texture2D(Positions, uv).rgb * 2.0 - 1.0;	
-    vec3 n = texture2D(Normals, uv).rgb * 2.0 - 1.0;
-    vec2 rand = normalize(texture2D(NormalMap, 64*64 * uv / 64).xy);
+ 	float depth = texture2D(Depth,uv).r;
+	vec2  xy = uv * 2.0 -1.0;
+	vec4  wPosition = inverse(projectionMatrix*viewMatrix) * vec4(xy, depth * 2.0 -1.0, 1.0);
+	vec3  p = vec3(wPosition/wPosition.w);
+	
+	vec3 n = vec3(normalize(texture2D(Normals, uv).rgb));
+	vec4 n2 = vec4(n,1.0);
+	n = n2.xyz;
+	vec2 rand = normalize(texture2D(NormalMap, 64*64 * uv / 64).xy);
  
-    float fColor = 0.0;
- 
-    for(int j = 0; j < NbSamples; ++j)
-    {
-        vec2 coord = reflect(KERNEL[j], rand) * SamplingRadius;
-        fColor += doAmbientOcclusion(uv, coord, p, n);
-    }
- 
-    fColor = fColor / NbSamples;
-    Color = vec4(fColor,fColor,fColor,1.0);
+	float fColor = 0.0;
+
+	for(int j = 0; j < NbSamples; ++j)
+	{
+		vec2 coord = reflect(KERNEL[j], rand) * SamplingRadius;
+		fColor += doAmbientOcclusion(uv, coord, p, n);
+	}
+
+	fColor = fColor / NbSamples;
+	Color = vec4(fColor,fColor,fColor,1.0);
 }

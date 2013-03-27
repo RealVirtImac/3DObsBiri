@@ -136,6 +136,10 @@ Renderer::Renderer(int width, int height):
 	m_ssao_positions_texture_location = glGetUniformLocation(m_ssao_shader_program,"Positions");
 	m_ssao_normal_map_location = glGetUniformLocation(m_ssao_shader_program,"NormalMap");
 	m_ssao_nb_samples_location = glGetUniformLocation(m_ssao_shader_program,"NbSamples");
+	m_ssao_view_matrix_location = glGetUniformLocation(m_ssao_shader_program,"viewMatrix");
+	m_ssao_projection_matrix_location = glGetUniformLocation(m_ssao_shader_program,"projectionMatrix");
+	m_ssao_model_matrix_location = glGetUniformLocation(m_ssao_shader_program,"modelMatrix");
+	m_ssao_depth_location = glGetUniformLocation(m_ssao_shader_program,"Depth");
 	//~ Adding some parameters
 	glBindFragDataLocation(m_ssao_shader_program, 0, "Color");
 	
@@ -241,7 +245,14 @@ void Renderer::render()
 			//~ ------------------------------------------------------------------------------------------------------------
 			//~ Rendering the SSAO for the first camera
 			//~ ------------------------------------------------------------------------------------------------------------
-			render_SSAO(m_geometry_buffer_framebuffer->get_texture_color_id()[1],m_geometry_buffer_framebuffer->get_texture_color_id()[2],m_normal_map_texture);
+			render_SSAO(	m_geometry_buffer_framebuffer->get_texture_color_id()[1],
+							m_geometry_buffer_framebuffer->get_texture_color_id()[2],
+							m_normal_map_texture,
+							m_rig->get_camera_one()->get_view_matrix(),
+							m_rig->get_camera_one()->get_projection_matrix(),
+							m_object->get_model_matrix(),
+							m_geometry_buffer_framebuffer->get_depth_texture_id()
+							);
 			//~ ------------------------------------------------------------------------------------------------------------
 			//~ Bluring the first SSAO
 			//~ ------------------------------------------------------------------------------------------------------------
@@ -324,7 +335,14 @@ void Renderer::render()
 			//~ ------------------------------------------------------------------------------------------------------------
 			//~ Rendering the SSAO for the second camera
 			//~ ------------------------------------------------------------------------------------------------------------
-			render_SSAO(m_geometry_buffer_framebuffer->get_texture_color_id()[1],m_geometry_buffer_framebuffer->get_texture_color_id()[2],m_normal_map_texture);
+			render_SSAO(	m_geometry_buffer_framebuffer->get_texture_color_id()[1],
+							m_geometry_buffer_framebuffer->get_texture_color_id()[2],
+							m_normal_map_texture,
+							m_rig->get_camera_two()->get_view_matrix(),
+							m_rig->get_camera_two()->get_projection_matrix(),
+							m_object->get_model_matrix(),
+							m_geometry_buffer_framebuffer->get_depth_texture_id()
+							);
 			//~ ------------------------------------------------------------------------------------------------------------
 			//~ Bluring the second SSAO
 			//~ ------------------------------------------------------------------------------------------------------------
@@ -670,13 +688,13 @@ void Renderer::load_object(const std::string model,const std::string texture)
 
 	float avgDistToBarycentre = m_object->computeAvgDistToBarycentre();
 	float scale = (m_dc*(2.0f/3.0f))/avgDistToBarycentre;
-	//m_object->set_model_matrix(glm::scale(m_object->get_model_matrix(),glm::vec3(scale,scale,scale)));
+	m_object->set_model_matrix(glm::scale(m_object->get_model_matrix(),glm::vec3(scale,scale,scale)));
 
 	glm::vec3 barycentre = m_object->computeBarycentre();
 	barycentre *= scale;
-	//m_object->set_model_matrix(glm::translate(m_object->get_model_matrix(),-barycentre));
+	m_object->set_model_matrix(glm::translate(m_object->get_model_matrix(),-barycentre));
 
-	//m_object->set_model_matrix(glm::rotate(m_object->get_model_matrix(), 90.0f, glm::vec3(0, 1, 0)));
+	m_object->set_model_matrix(glm::rotate(m_object->get_model_matrix(), 90.0f, glm::vec3(0, 1, 0)));
 }
 
 void Renderer::render_GUI()
@@ -758,9 +776,9 @@ void Renderer::render_GUI()
 	if(m_toggle) m_gui_keyboard_layout = !m_gui_keyboard_layout;
 	
 	imguiBeginScrollArea("Settings",m_width-200,0, 200, m_height, &logScroll);
-	imguiSlider("Biais", &m_ssao_biais_value, 0.0, 3.0, 0.01);
-	imguiSlider("Sampling radius", &m_ssao_radius_value, 0.0, 3.0, 0.01);
-	imguiSlider("Scale", &m_ssao_scale_value, 0.0, 3.0, 0.01);
+	imguiSlider("Biais", &m_ssao_biais_value, 0.0, 10.0, 0.01);
+	imguiSlider("Sampling radius", &m_ssao_radius_value, 0.0, 1.0, 0.01);
+	imguiSlider("Scale", &m_ssao_scale_value, 0.0, 10.0, 0.01);
 	imguiSlider("NbSamples", &m_ssao_nb_samples_value, 0.0, 64.0, 1.0);
 	imguiSlider("Blur Coefficient", &m_blur_coef_value, 0.0, 36.0, 1.0);
 	
@@ -772,7 +790,7 @@ void Renderer::render_GUI()
 	glEnable(GL_DEPTH_TEST);
 }
 
-void Renderer::render_SSAO(const GLuint positions_map, const GLuint normals_map, const GLuint random_map)
+void Renderer::render_SSAO(const GLuint positions_map, const GLuint normals_map, const GLuint random_map, glm::mat4 view, glm::mat4 projection, glm::mat4 model, const GLuint depth_map)
 {
 	glBindFramebuffer(GL_FRAMEBUFFER, m_ssao_framebuffer->get_framebuffer_id());
 	glDrawBuffers(m_ssao_framebuffer->get_number_of_color_textures(), m_ssao_framebuffer->get_draw_buffers());
@@ -783,10 +801,14 @@ void Renderer::render_SSAO(const GLuint positions_map, const GLuint normals_map,
 	glUniform1i(m_ssao_normals_texture_location, 0);
 	glUniform1i(m_ssao_positions_texture_location, 1);
 	glUniform1i(m_ssao_normal_map_location, 2);
+	glUniform1i(m_ssao_depth_location, 3);
 	glUniform1f(m_ssao_biais_location, m_ssao_biais_value);
 	glUniform1f(m_ssao_radius_location, m_ssao_radius_value);
 	glUniform1f(m_ssao_scale_location, m_ssao_scale_value);
 	glUniform1f(m_ssao_nb_samples_location, m_ssao_nb_samples_value);
+	glUniformMatrix4fv(m_ssao_view_matrix_location, 1, GL_FALSE, glm::value_ptr(view));
+	glUniformMatrix4fv(m_ssao_projection_matrix_location, 1, GL_FALSE, glm::value_ptr(projection));
+	glUniformMatrix4fv(m_ssao_model_matrix_location, 1, GL_FALSE, glm::value_ptr(model));
 
 	glActiveTexture(GL_TEXTURE0);
 	glBindTexture(GL_TEXTURE_2D, positions_map);
@@ -794,6 +816,8 @@ void Renderer::render_SSAO(const GLuint positions_map, const GLuint normals_map,
 	glBindTexture(GL_TEXTURE_2D, normals_map);
 	glActiveTexture(GL_TEXTURE2);
 	glBindTexture(GL_TEXTURE_2D, random_map);
+	glActiveTexture(GL_TEXTURE3);
+	glBindTexture(GL_TEXTURE_2D, depth_map);
 	
 	//~ //Binding vao
 	glBindVertexArray(m_quad_left->get_vao());

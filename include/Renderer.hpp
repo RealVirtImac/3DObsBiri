@@ -96,7 +96,7 @@ class Renderer
 		 * \param normals_map The texture containing the normals. Can be found in the geometry buffer
 		 * \param random_map The texture containing the random data needed by the SSAO technique
 		 */ 
-		void render_SSAO(const GLuint positions_map, const GLuint normals_map, const GLuint random_map);
+		void render_SSAO(const GLuint positions_map, const GLuint normals_map, const GLuint random_map, glm::mat4 view, glm::mat4 projection, glm::mat4 model,const GLuint depth_map);
 		//! Blurs a texture
 		/*!
 		 * \param texture_to_blur The texture to be blur. The blur coefficient is available in its own slider in the GUI
@@ -212,6 +212,10 @@ class Renderer
 		GLuint m_ssao_positions_texture_location;
 		GLuint m_ssao_normal_map_location;
 		GLuint m_ssao_nb_samples_location;
+		GLuint m_ssao_view_matrix_location;
+		GLuint m_ssao_projection_matrix_location;
+		GLuint m_ssao_model_matrix_location;
+		GLuint m_ssao_depth_location;
 		
 		GLuint m_normal_map_texture;
 		
