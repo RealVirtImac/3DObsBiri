@@ -203,6 +203,9 @@ class Renderer
 		GLuint m_light_accumulation_depth_location;
 		GLuint m_light_accumulation_view_matrix_location;
 		GLuint m_light_accumulation_projection_matrix_location;
+		GLuint m_light_accumulation_shadow_location;
+		GLuint m_light_accumulation_light_projection_location;
+		GLuint m_light_accumulation_light_direction_location;
 		
 		GLuint m_ssao_shader_program;
 		GLuint m_ssao_radius_location;
@@ -226,6 +229,11 @@ class Renderer
 		GLuint m_ssao_blend_shader_program;
 		GLuint m_ssao_blend_occlusion_map_location;
 		GLuint m_ssao_blend_color_map_location;
+		
+		GLuint m_shadow_shader_program;
+		GLuint m_shadow_projection_matrix_location;
+		GLuint m_shadow_model_matrix_location;
+		GLuint m_shadow_view_matrix_location;
 
 		float m_lightIntensity;
 		float m_radiusLight;
@@ -237,6 +245,7 @@ class Renderer
 		Framebuffer* m_blur_ssao_framebuffer;
 		Framebuffer* m_left_ssao_blend_framebuffer;
 		Framebuffer* m_right_ssao_blend_framebuffer;
+		Framebuffer* m_shadow_framebuffer;
 		
 		bool m_display_gui;
 		

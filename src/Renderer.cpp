@@ -90,6 +90,7 @@ Renderer::Renderer(int width, int height):
 	m_ssao_shader_program = loadProgram("shaders/ssao.vertex.glsl","shaders/ssao.fragment.glsl");
 	m_blur_shader_program = loadProgram("shaders/blur.vertex.glsl","shaders/blur.fragment.glsl");
 	m_ssao_blend_shader_program = loadProgram("shaders/ssao_blend.vertex.glsl","shaders/ssao_blend.fragment.glsl");
+	m_shadow_shader_program = loadProgram("shaders/shadow.vertex.glsl","shaders/shadow.fragment.glsl");
 	
 	//~ Locating uniforms
 	m_basic_shader_model_matrix_position = glGetUniformLocation(m_basic_shader_program,"model_matrix");
@@ -126,6 +127,9 @@ Renderer::Renderer(int width, int height):
 	m_light_accumulation_depth_location = glGetUniformLocation(m_light_accumulation_shader_program,"depth_texture");
 	m_light_accumulation_view_matrix_location = glGetUniformLocation(m_light_accumulation_shader_program,"view_matrix");
 	m_light_accumulation_projection_matrix_location = glGetUniformLocation(m_light_accumulation_shader_program,"projection_matrix");
+	m_light_accumulation_shadow_location = glGetUniformLocation(m_light_accumulation_shader_program,"shadowMap");
+	m_light_accumulation_light_projection_location = glGetUniformLocation(m_light_accumulation_shader_program,"light_projection");
+	m_light_accumulation_light_direction_location = glGetUniformLocation(m_light_accumulation_shader_program,"light_direction");
 	//~ Adding some parameters
 	glBindFragDataLocation(m_light_accumulation_shader_program, 0, "out_frag_color");
 
@@ -150,6 +154,10 @@ Renderer::Renderer(int width, int height):
 
 	m_ssao_blend_color_map_location = glGetUniformLocation(m_ssao_blend_shader_program,"ColorMap");
 	m_ssao_blend_occlusion_map_location = glGetUniformLocation(m_ssao_blend_shader_program,"OcclusionMap");
+	
+	m_shadow_projection_matrix_location = glGetUniformLocation(m_shadow_shader_program,"projectionMatrix");
+	m_shadow_model_matrix_location = glGetUniformLocation(m_shadow_shader_program,"modelMatrix");
+	m_shadow_view_matrix_location = glGetUniformLocation(m_shadow_shader_program,"viewMatrix");
 
 	load_normal_map();
 
@@ -171,6 +179,7 @@ Renderer::Renderer(int width, int height):
 	m_blur_ssao_framebuffer = new Framebuffer(1,m_width,m_height);
 	m_left_ssao_blend_framebuffer = new Framebuffer(1,m_width,m_height);
 	m_right_ssao_blend_framebuffer = new Framebuffer(1,m_width,m_height);
+	m_shadow_framebuffer = new Framebuffer(1,512,512);
 
 	//~ //Default view : Anaglyph
 	m_view_mode = 0;
@@ -186,6 +195,7 @@ Renderer::~Renderer()
 	delete m_blur_ssao_framebuffer;
 	delete m_left_ssao_blend_framebuffer;
 	delete m_right_ssao_blend_framebuffer;
+	delete m_shadow_framebuffer;
 	//~ Deleting objects
 	delete m_object;
 	delete m_quad_left;
@@ -211,11 +221,30 @@ void Renderer::render()
 	{
 		if(m_object != NULL)
 		{
+			// Compute light positions
+			glm::vec3 light_pos = glm::vec3(0.0,4.0,-7.0);
+			glm::vec3 light_target = glm::vec3(-2.0,0.0,0.0);
+			glm::vec3 light_direction = glm::normalize(light_target - light_pos);
+			glm::vec3 light_up = glm::vec3(0.0,1.0,0.0);
+			glm::vec3 light_col = glm::vec3(1.0,1.0,1.0);
+			float light_int = 1.0f;
+			// Build shadow matrices
+			glm::mat4 world_to_light = glm::lookAt(light_pos,light_target,light_up);
+			glm::mat4 shadow_projection = glm::perspective(60.0f,1.0f,1.0f,1000.0f);
+			glm::mat4 projection_light = world_to_light * shadow_projection;
+			glm::mat4 biasMatrix(
+				0.5, 0.0, 0.0, 0.0,
+				0.0, 0.5, 0.0, 0.0,
+				0.0, 0.0, 0.5, 0.0,
+				0.5, 0.5, 0.5, 1.0
+				);
+			glm::mat4 projection_light_bias = biasMatrix * projection_light;
+			
 			std::vector<glm::vec3> light_position;
 			light_position.push_back(glm::vec3(-m_radiusLight,-m_radiusLight,-m_radiusLight));
-			light_position.push_back(glm::vec3(m_radiusLight,-m_radiusLight,-m_radiusLight));
-			light_position.push_back(glm::vec3(-m_radiusLight,m_radiusLight,-m_radiusLight));
-			light_position.push_back(glm::vec3(m_radiusLight,m_radiusLight,-m_radiusLight));
+			//~ light_position.push_back(glm::vec3(m_radiusLight,-m_radiusLight,-m_radiusLight));
+			//~ light_position.push_back(glm::vec3(-m_radiusLight,m_radiusLight,-m_radiusLight));
+			//~ light_position.push_back(glm::vec3(m_radiusLight,m_radiusLight,-m_radiusLight));
 			
 			glm::vec3 light_color = glm::vec3(1.0f,1.0f,1.0f);
 			//~ ------------------------------------------------------------------------------------------------------------
@@ -239,6 +268,32 @@ void Renderer::render()
 			glBindVertexArray(m_object->get_vao());
 			//~ Drawing
 			glDrawArrays(GL_TRIANGLES, 0, m_object->get_size());
+			//~ Unbind
+			glBindVertexArray(0);
+			glBindFramebuffer(GL_FRAMEBUFFER, 0);
+			//~ ------------------------------------------------------------------------------------------------------------
+			//~ Rendering the shadow framebuffer
+			//~ ------------------------------------------------------------------------------------------------------------
+			glBindFramebuffer(GL_FRAMEBUFFER, m_shadow_framebuffer->get_framebuffer_id());
+			glDrawBuffers(m_shadow_framebuffer->get_number_of_color_textures(), m_shadow_framebuffer->get_draw_buffers());
+			glViewport(0, 0, 1024, 1024);
+			glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
+			glUseProgram(m_shadow_shader_program);
+			glUniformMatrix4fv(m_shadow_projection_matrix_location, 1, GL_FALSE, glm::value_ptr(shadow_projection));
+			glUniformMatrix4fv(m_shadow_view_matrix_location, 1, GL_FALSE, glm::value_ptr(world_to_light));
+			glUniformMatrix4fv(m_shadow_model_matrix_location, 1, GL_FALSE, glm::value_ptr(m_object->get_model_matrix()));
+
+			glCullFace(GL_FRONT);
+			//~ Binding VAO
+			glBindVertexArray(m_object->get_vao());
+			//~ Drawing
+			glDrawArrays(GL_TRIANGLES, 0, m_object->get_size());
+			glCullFace(GL_BACK);
+
+			// Unbind framebuffer
+			glBindFramebuffer(GL_FRAMEBUFFER, 0);
+
 			//~ Unbind
 			glBindVertexArray(0);
 			glBindFramebuffer(GL_FRAMEBUFFER, 0);
@@ -270,6 +325,8 @@ void Renderer::render()
 			glUniform3fv(m_light_accumulation_camera_position_location, GL_FALSE, glm::value_ptr(m_rig->get_camera_one()->get_position()));
 			glUniformMatrix4fv(m_light_accumulation_view_matrix_location, 1, GL_FALSE, glm::value_ptr(m_rig->get_camera_one()->get_view_matrix()));
 			glUniformMatrix4fv(m_light_accumulation_projection_matrix_location, 1, GL_FALSE, glm::value_ptr(m_rig->get_camera_one()->get_projection_matrix()));
+			glUniformMatrix4fv(m_light_accumulation_light_projection_location, 1, GL_FALSE, glm::value_ptr(projection_light_bias));
+			glUniform3fv(m_light_accumulation_light_direction_location, 1, glm::value_ptr(light_direction));
 			
 			glDisable(GL_DEPTH_TEST);
 			glEnable(GL_BLEND);
@@ -286,6 +343,10 @@ void Renderer::render()
 			glActiveTexture(GL_TEXTURE2);
 			glBindTexture(GL_TEXTURE_2D,m_geometry_buffer_framebuffer->get_depth_texture_id());
 			glUniform1i(m_light_accumulation_depth_location,2);
+			
+			glActiveTexture(GL_TEXTURE3);
+			glBindTexture(GL_TEXTURE_2D,m_shadow_framebuffer->get_depth_texture_id());
+			glUniform1i(m_light_accumulation_shadow_location,3);
 			
 			for(unsigned int i = 0; i < light_position.size(); ++i)
 			{
